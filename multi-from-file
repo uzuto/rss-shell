@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Liscenced under GPL-v3
+# Author : UzutoNarumaki
+# Original Name : multi-from-file
+# Deps : fzf,ariac,xmlstarlet
+
+version=0.5
+
+# File containing RSS URLs, with one URL per line
+RSS_URLS_FILE="$HOME/.config/rss_urls.txt"
+
+# Read RSS URLs from the file into an array
+mapfile -t RSS_URLS < "$RSS_URLS_FILE"
+
+# Fetch the RSS feeds and extract titles
+titles=""
+for url in "${RSS_URLS[@]}"; do
+    titles+="$(curl -s "$url" | xmlstarlet sel -t -m "//item" -v "title" -n)"
+done
+
+# Check if there are any titles
+if [[ -z $titles ]]; then
+    echo "No titles found in the RSS feeds."
+    exit 1
+fi
+
+# Display the titles using fzf and select one
+selected_title=$(echo "$titles" | fzf --prompt="Select an entry to download: " --preview-window=hidden)
+
+# Check if a title was selected
+if [[ -z $selected_title ]]; then
+    echo "No title selected. Exiting."
+    exit 0
+fi
+
+# Find the corresponding link for the selected title
+selected_link=""
+for url in "${RSS_URLS[@]}"; do
+    link=$(curl -s "$url" | xmlstarlet sel -t -m "//item[title='$selected_title']" -v "link")
+    if [[ -n $link ]]; then
+        selected_link=$link
+        break
+    fi
+done
+
+# Check if a link was found
+if [[ -z $selected_link ]]; then
+    echo "No link found for the selected title. Exiting."
+    exit 0
+fi
+
+# Download the selected torrent using aria2c
+aria2c --summary-interval=0 --console-log-level=warn --seed-time=0 "$selected_link"
+
+# rm ./*.torrent
